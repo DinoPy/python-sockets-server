@@ -118,9 +118,10 @@ async def create_task(user_id, obj):
         duration: string
         category: string - one of the categories saved
         tags: string - comma delimiated list of tags
-        toggled_at: number - IAT time
+        toggled_at: number - Epoch Unix Timestamp time
         is_active: boolean
         is_completed: boolean
+        last_modified_at: number
     }
     """
 
@@ -140,7 +141,8 @@ async def create_task(user_id, obj):
             toggled_at,
             is_active,
             is_completed,
-            user_id
+            user_id,
+            last_modified_at
         ) VALUES (
                 :id,
                 :title,
@@ -153,7 +155,8 @@ async def create_task(user_id, obj):
                 :toggled_at,
                 :is_active,
                 :is_completed,
-                :user_id
+                :user_id,
+                :last_modified_at
             )
         """, {
             "user_id": user_id,
@@ -183,6 +186,7 @@ async def toggle_task(obj):
         toggled_at: integer
         is_active: boolean
         duration: string
+        last_modified_at: integer
     }
     """
 
@@ -193,7 +197,8 @@ async def toggle_task(obj):
                 UPDATE tasks SET
                 is_active = :is_active,
                 toggled_at =  :toggled_at,
-                duration = :duration
+                duration = :duration,
+                last_modified_at = :last_modified_at
                 WHERE id = :uuid
             """, obj
                                            ) as cursor:
@@ -247,7 +252,8 @@ async def complete_task(obj):
     :params - dict - {
         duration: string,
         completed_at: string,
-        id: string
+        id: string,
+        last_modified_at: integer
     }
     """
 
@@ -259,7 +265,8 @@ async def complete_task(obj):
             is_active = 0,
             is_completed = 1,
             duration = :duration,
-            completed_at = :completed_at
+            completed_at = :completed_at,
+            last_modified_at = :last_modified_at
             WHERE id = :id
             """, obj) as cursor:
             await db_conn["conn"].commit()
@@ -281,7 +288,8 @@ async def edit_task(obj):
         title: string,
         description: string,
         category: string,
-        tags: string
+        tags: string,
+        last_modified_at: integer
     }
     """
 
@@ -293,7 +301,8 @@ async def edit_task(obj):
                 title = :title,
                 description = :description,
                 category = :category,
-                tags = :tags
+                tags = :tags,
+                last_modified_at = :last_modified_at
             WHERE id = :id
             """, obj) as cursor:
             await db_conn["conn"].commit()

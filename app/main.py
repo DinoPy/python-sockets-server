@@ -89,6 +89,7 @@ async def connect(sid, environ):
     was_fetched, tasks_list = await fetch_active_tasks_by_user(id)
 
     if was_fetched:
+        print("issuing refresher")
         await sio.emit('socket-connected', {
             'id': sid,
             "tasks": tasks_list
@@ -126,7 +127,6 @@ async def task_completed(sid, data):
 
 @sio.event
 async def task_create(sid, data):
-    # TODO: create function that will filter active connection and extract all SID's related to current SID login ID
     was_added, err = await create_task(active_connections[sid]["id"], json.loads(data))
     response = {"was_addded": was_added, "message": err}
     print("Creating new task")

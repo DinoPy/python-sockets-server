@@ -1,0 +1,2 @@
+ALTER TABLE tasks ADD COLUMN
+last_modified_at INTEGER NOT NULL DEFAULT(0);
