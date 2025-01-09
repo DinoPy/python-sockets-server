@@ -1,8 +1,14 @@
 import socketio
-from app.models import create_user, get_tasks, fetch_active_tasks_by_user, create_task, toggle_task, edit_task, complete_task, delete_task, init_db_conns, close_db_conns
+import json
+import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from uuid import uuid4
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import json
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from app.models import create_user, get_non_completed_tasks, fetch_active_tasks_by_user, create_task, toggle_task, edit_task, complete_task, delete_task, init_db_conns, close_db_conns
+from app.utility import duration_str_to_int, duration_int_to_str
 
 # Create FastAPI app
 app = FastAPI()
@@ -24,6 +30,79 @@ sio2 = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*', logger=
 app.mount("/ws/test", socketio.ASGIApp(sio2, socketio_path=""))
 """
 
+
+async def midnight_task_refresh():
+    user_ids = []
+    timezone = ZoneInfo("Europe/Bucharest")
+    now = datetime.now(timezone)
+    now_datetime_formated = now.strftime("%-m/%-d,%Y %H:%M:%S")
+
+    # get all the tasks that are not completed from db
+    was_fetched, non_completed_tasks = await get_non_completed_tasks()
+
+    # get last epoch time
+    last_epoch_t = int(time.time() * 1000)
+
+    # for each task:
+    for t in non_completed_tasks:
+        print(t)
+        # save the id of the user we must try to send a refresher to.
+        user_ids.append(t[11])
+
+        # calculate duration int
+        dur_int = duration_str_to_int(t[5])
+
+        # update current task to new duration, completed status, last_modified_at, completed_at
+        was_updated, err = await complete_task({
+            "duration": duration_int_to_str(int((dur_int + last_epoch_t - t[8])/1000)),
+            "completed_at": now_datetime_formated,
+            "id": t[0],
+            "last_modified_at": last_epoch_t
+            })
+
+        # insert a new task with the same properties with the exception of:
+        was_created, err = await create_task(t[11], {
+            "id": str(uuid4()),
+            "title": t[1],
+            "description": t[2],
+            "created_at": now_datetime_formated,
+            "completed_at": now_datetime_formated,
+            "duration": "00:00:00",
+            "category": t[6],
+            "tags": t[7],
+            "toggled_at": last_epoch_t if t[9] == 1 else 0,
+            "is_active": t[9],
+            "is_completed": 0,
+            "last_modified_at": last_epoch_t,
+        })
+
+    # emit a refresher to all conected devices
+    for sid in active_connections:
+        uid = active_connections[sid]["id"]
+        if (uid in user_ids):
+            was_fetched, tasks_list = await fetch_active_tasks_by_user(uid)
+
+            if was_fetched:
+                print(f"issuing refresher to user id {uid}")
+                await sio.emit("tasks_refresher", {
+                    "id": sid,
+                    "tasks": tasks_list
+                }, to=sid)
+            else:
+                await sio.emit("tasks_refresher", {
+                    "id": sid,
+                    "tasks": []
+                }, to=sid)
+
+    print(time.time() * 1000)
+
+
+romania_tz = ZoneInfo("Europe/Bucharest")
+scheduler = AsyncIOScheduler(timezone=romania_tz)
+scheduler.add_job(midnight_task_refresh, "cron", hour="0", minute="0")
+scheduler.start()
+
+
 # Dictionary to store active connections
 active_connections = {}
 
@@ -44,7 +123,7 @@ async def emitter_to_associated_sids(ev: str, sid_lst: list[str], data: dict):
 
 @app.get("/api/tasks")
 async def tasks():
-    was_fetched, data = await get_tasks()
+    was_fetched, data = await get_non_completed_tasks()
     if was_fetched:
         return json.dumps(data)
     else:
@@ -74,11 +153,11 @@ async def connect(sid, environ):
 
     # Store connection details
     active_connections[sid] = {
-        'sid': sid,
+        "sid": sid,
         "id": id,
-        'email': email,
-        'first_name': first_name,
-        'last_name': last_name
+        "email": email,
+        "first_name": first_name,
+        "last_name": last_name
     }
     # Create the user in the database
     response = await create_user(id, email, first_name, last_name)
@@ -89,14 +168,14 @@ async def connect(sid, environ):
     was_fetched, tasks_list = await fetch_active_tasks_by_user(id)
 
     if was_fetched:
-        print("issuing refresher")
-        await sio.emit('socket-connected', {
-            'id': sid,
+        print("issuing refresher for reconnect")
+        await sio.emit("socket_connected", {
+            "id": sid,
             "tasks": tasks_list
         }, to=sid)
     else:
-        await sio.emit('socket-connected', {
-            'id': sid,
+        await sio.emit("socket_connected", {
+            "id": sid,
             "tasks": []
         }, to=sid)
 

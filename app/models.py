@@ -104,6 +104,61 @@ async def get_tasks():
         free_db(db_index)
 
 
+async def get_non_completed_tasks():
+    """
+    Will return a list of tasks that don't have is_completed=1
+
+    returns: list
+    """
+
+    db_conn, db_index = get_unused_db()
+
+    try:
+        async with db_conn["conn"].execute("""
+            SELECT *
+            FROM tasks
+            WHERE is_completed = 0
+            ORDER BY user_id
+               """) as cursor:
+            data = await cursor.fetchall()
+            return (True, data)
+
+    except Exception as e:
+        print(e)
+        return (False, str(e))
+
+    finally:
+        free_db(db_index)
+
+
+async def fetch_active_tasks_by_user(id):
+    """
+    Queries the database and returns all active tasks of a given user.
+
+    :params - id: string
+
+    :returns - list of tasks
+    """
+
+    db_conn, db_index = get_unused_db()
+
+    try:
+        async with db_conn["conn"].execute("""
+            SELECT *
+            FROM tasks
+            WHERE user_id = :id AND is_completed = 0
+            """, {"id": id}
+        ) as cursor:
+            data = await cursor.fetchall()
+            return (True, data)
+
+    except Exception as e:
+        print(e)
+        return (False, str(e))
+    finally:
+        free_db(db_index)
+
+
 async def create_task(user_id, obj):
     """
     Insert a new task into the tasks table.
@@ -209,34 +264,6 @@ async def toggle_task(obj):
     except aiosqlite.IntegrityError as e:
         print(e)
         return (False, str(e))
-
-    except Exception as e:
-        print(e)
-        return (False, str(e))
-    finally:
-        free_db(db_index)
-
-
-async def fetch_active_tasks_by_user(id):
-    """
-    Queries the database and returns all active tasks of a given user.
-
-    :params - id: string
-
-    :returns - list of tasks
-    """
-
-    db_conn, db_index = get_unused_db()
-
-    try:
-        async with db_conn["conn"].execute("""
-            SELECT *
-            FROM tasks
-            WHERE user_id = :id AND is_completed = 0
-            """, {"id": id}
-        ) as cursor:
-            data = await cursor.fetchall()
-            return (True, data)
 
     except Exception as e:
         print(e)
