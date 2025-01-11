@@ -66,17 +66,69 @@ async def create_user(id: str, email: str, first_name: str, last_name: str):
             await db_obj["conn"].commit()
             return {id, email, first_name, last_name}
 
-    except aiosqlite.IntegrityError as e:
-        print(e.sqlite_errorname)
-        if e.sqlite_errorname == "SQLITE_CONSTRAINT_PRIMARYKEY":
-            return True
-        print(f"Error: {
-              e}. This might be due to a duplicate ID or other constraint violations.")
-        return False
-
     except Exception as e:
         print(f"An error occurred: {e}")
-        return None
+        if str(e).find("UNIQUE constraint failed: users.id") != -1:
+            return True
+        return False
+
+    finally:
+        free_db(db_index)
+
+
+async def get_user_categories(id: str):
+    """
+    Queries the database for the categories saved for the user
+
+    :param - id: string
+
+    :returns - string of users categories
+    """
+
+    db_conn, db_index = get_unused_db()
+
+    try:
+        async with db_conn["conn"].execute("""
+            SELECT categories
+            FROM users
+            WHERE id = :id
+       """, {"id": id}) as cursor:
+            data = await cursor.fetchone()
+            return (True, data[0])
+
+    except Exception as e:
+        print(e)
+        return (False, str(e))
+
+    finally:
+        free_db(db_index)
+
+
+async def update_user_categories(id: str, categories: str):
+    """
+    Updates the categories properties of the given user
+
+    :params - id: string
+    :params - categories: string
+
+    :returns - boolean
+    """
+
+    db_conn, db_index = get_unused_db()
+
+    try:
+        async with db_conn["conn"].execute("""
+            UPDATE users
+            SET
+                categories = :categories
+            WHERE
+                id = :id
+           """, {"id": id, "categories": categories}) as cursor:
+            await db_conn["conn"].commit()
+            return True
+    except Exception as e:
+        print(e)
+        return False
 
     finally:
         free_db(db_index)
@@ -156,7 +208,8 @@ async def get_completed_tasks_by_uid(id: str, start_date: str, end_date: str):
                     category,
                     created_at,
                     completed_at,
-                    duration
+                    duration,
+                    tags
                 FROM tasks
                 WHERE user_id = :uid
                     AND completed_at >= :start_date
@@ -304,8 +357,7 @@ async def toggle_task(obj):
             """, obj
                                            ) as cursor:
             await db_conn["conn"].commit()
-            print(f"task id: {obj["uuid"]} was now toggled to {
-                  obj["is_active"]}")
+            print(f"task id: {obj['uuid']} was now toggled to { obj['is_active']}")
             return (True, "")
     except aiosqlite.IntegrityError as e:
         print(e)

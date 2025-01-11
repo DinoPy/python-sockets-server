@@ -7,7 +7,7 @@ from uuid import uuid4
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from app.models import create_user, get_non_completed_tasks, get_completed_tasks_by_uid, fetch_active_tasks_by_user, create_task, toggle_task, edit_task, complete_task, delete_task, init_db_conns, close_db_conns
+from app.models import create_user, get_user_categories, update_user_categories, get_non_completed_tasks, get_completed_tasks_by_uid, fetch_active_tasks_by_user, create_task, toggle_task, edit_task, complete_task, delete_task, init_db_conns, close_db_conns
 from app.utility import duration_str_to_int, duration_int_to_str
 
 # Create FastAPI app
@@ -29,6 +29,7 @@ app.mount("/ws/taskbar", socketio.ASGIApp(sio, socketio_path=""))
 sio2 = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*', logger=True, engineio_logger=True)
 app.mount("/ws/test", socketio.ASGIApp(sio2, socketio_path=""))
 """
+
 
 async def midnight_task_refresh():
     user_ids = []
@@ -95,7 +96,6 @@ async def midnight_task_refresh():
                     "id": sid,
                     "tasks": []
                 }, to=sid)
-
 
 
 romania_tz = ZoneInfo("Europe/Bucharest")
@@ -167,16 +167,20 @@ async def connect(sid, environ):
         return
 
     was_fetched, tasks_list = await fetch_active_tasks_by_user(id)
+    were_categories_fetched, categories = await get_user_categories(id)
+    print(categories)
 
     if was_fetched:
         print("issuing refresher for reconnect")
         await sio.emit("socket_connected", {
             "id": sid,
+            "categories": categories,
             "tasks": tasks_list
         }, to=sid)
     else:
         await sio.emit("socket_connected", {
             "id": sid,
+            "categories": categories,
             "tasks": []
         }, to=sid)
 
@@ -190,6 +194,15 @@ async def disconnect(sid):
             break
     print(f"{sid} - disconnected")
     await sio.emit('user-disconnected', {'sid': sid})
+
+
+@sio.event
+async def user_updated_categories(sid, data):
+    data = json.loads(data)
+    was_updated = await update_user_categories(
+        active_connections[sid]["id"],
+        ",".join(data)
+    )
 
 
 @sio.event

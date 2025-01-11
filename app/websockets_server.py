@@ -1,6 +1,5 @@
 import socketio
 import uuid
-import json
 from app.models import create_user
 
 # Create a Socket.IO server
@@ -9,6 +8,7 @@ app = socketio.ASGIApp(sio)
 
 # Dictionary to store active connections
 active_connections = {}
+
 
 @sio.event
 async def connect(sid, environ):
@@ -38,6 +38,7 @@ async def connect(sid, environ):
     # Send confirmation message
     await sio.emit('socket-connected', {'id': random_id}, room=sid)
 
+
 @sio.event
 async def disconnect(sid):
     # Find and remove the disconnected user
@@ -47,6 +48,7 @@ async def disconnect(sid):
             break
     await sio.emit('user-disconnected', {'sid': sid})
 
+
 @sio.event
 async def message(sid, data):
     # Broadcast the received message to all clients
@@ -54,5 +56,7 @@ async def message(sid, data):
     await sio.emit('message', {'message': data})
 
 # Broadcast messages to all active connections
+
+
 async def send_message_to_all(message: str):
     await sio.emit('broadcast', {'message': message})

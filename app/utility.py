@@ -29,6 +29,4 @@ def duration_int_to_str(dur_int):
     minutes = math.floor((dur_int / 60) % 60)
     hours = math.floor(dur_int / 60 / 60)
     seconds = math.floor(dur_int % 60)
-    return f"{"0" + str(hours) if hours < 10 else hours
-              }:{"0" + str(minutes) if minutes < 10 else minutes
-             }:{"0" + str(seconds) if seconds < 10 else seconds}"
+    return f"{'0' + str(hours) if hours < 10 else hours }:{'0' + str(minutes) if minutes < 10 else minutes }:{'0' + str(seconds) if seconds < 10 else seconds}"
