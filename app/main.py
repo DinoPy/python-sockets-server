@@ -7,7 +7,7 @@ from uuid import uuid4
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from app.models import create_user, get_non_completed_tasks, fetch_active_tasks_by_user, create_task, toggle_task, edit_task, complete_task, delete_task, init_db_conns, close_db_conns
+from app.models import create_user, get_non_completed_tasks, get_completed_tasks_by_uid, fetch_active_tasks_by_user, create_task, toggle_task, edit_task, complete_task, delete_task, init_db_conns, close_db_conns
 from app.utility import duration_str_to_int, duration_int_to_str
 
 # Create FastAPI app
@@ -30,12 +30,11 @@ sio2 = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*', logger=
 app.mount("/ws/test", socketio.ASGIApp(sio2, socketio_path=""))
 """
 
-
 async def midnight_task_refresh():
     user_ids = []
     timezone = ZoneInfo("Europe/Bucharest")
     now = datetime.now(timezone)
-    now_datetime_formated = now.strftime("%-m/%-d,%Y %H:%M:%S")
+    now_datetime_formated = now.strftime("%Y-%m-%d %H:%M:%S")
 
     # get all the tasks that are not completed from db
     was_fetched, non_completed_tasks = await get_non_completed_tasks()
@@ -45,12 +44,15 @@ async def midnight_task_refresh():
 
     # for each task:
     for t in non_completed_tasks:
-        print(t)
         # save the id of the user we must try to send a refresher to.
         user_ids.append(t[11])
 
         # calculate duration int
         dur_int = duration_str_to_int(t[5])
+
+        # exclude tasks that with total duration 0
+        if dur_int == 0 and t[8] == 0:
+            continue
 
         # update current task to new duration, completed status, last_modified_at, completed_at
         was_updated, err = await complete_task({
@@ -58,7 +60,7 @@ async def midnight_task_refresh():
             "completed_at": now_datetime_formated,
             "id": t[0],
             "last_modified_at": last_epoch_t
-            })
+        })
 
         # insert a new task with the same properties with the exception of:
         was_created, err = await create_task(t[11], {
@@ -94,7 +96,6 @@ async def midnight_task_refresh():
                     "tasks": []
                 }, to=sid)
 
-    print(time.time() * 1000)
 
 
 romania_tz = ZoneInfo("Europe/Bucharest")
@@ -187,6 +188,7 @@ async def disconnect(sid):
         if conn['sid'] == sid:
             del active_connections[user_id]
             break
+    print(f"{sid} - disconnected")
     await sio.emit('user-disconnected', {'sid': sid})
 
 
@@ -263,6 +265,27 @@ async def task_delete(sid, data):
             data
         )
     return response
+
+
+@sio.event
+async def get_completed_tasks(sid, data):
+    now = datetime.now()
+    now_formatted_start = now.strftime("%Y-%m-%d 00:00:00")
+    now_formatted_end = now.strftime("%Y-%m-%d 23:59:59")
+    dates = json.loads(data)
+
+    if dates["start_date"]:
+        year, month, day = dates["start_date"].split("-")
+        date_start = datetime(year=int(year), month=int(month), day=int(day))
+        now_formatted_start = date_start.strftime("%Y-%m-%d 00:00:00")
+    if dates["end_date"]:
+        year, month, day = dates["end_date"].split("-")
+        date_end = datetime(year=int(year), month=int(month), day=int(day))
+        now_formatted_end = date_end.strftime("%Y-%m-%d 23:59:59")
+
+    was_fetched, data = await get_completed_tasks_by_uid(
+        active_connections[sid]["id"], now_formatted_start, now_formatted_end)
+    return data
 
 
 @app.on_event("startup")

@@ -131,6 +131,52 @@ async def get_non_completed_tasks():
         free_db(db_index)
 
 
+async def get_completed_tasks_by_uid(id: str, start_date: str, end_date: str):
+    """
+    Queries the db for all completed tasks of a given user
+    by default it will query tasks completed in the current day
+
+    :params
+        id: string
+        start_date: string
+        end_date: string
+
+    :returns
+        list of tasks
+    """
+
+    db_conn, db_index = get_unused_db()
+
+    try:
+        async with db_conn["conn"].execute("""
+                SELECT
+                    id,
+                    title,
+                    description,
+                    category,
+                    created_at,
+                    completed_at,
+                    duration
+                FROM tasks
+                WHERE user_id = :uid
+                    AND completed_at >= :start_date
+                    AND completed_at <= :end_date
+               """, {
+            "uid": id,
+            "start_date": start_date,
+            "end_date": end_date
+        }) as cursor:
+            data = await cursor.fetchall()
+            return (True, data)
+
+    except Exception as e:
+        print(e)
+        return (False, str(e))
+
+    finally:
+        free_db(db_index)
+
+
 async def fetch_active_tasks_by_user(id):
     """
     Queries the database and returns all active tasks of a given user.

@@ -14,7 +14,6 @@ def duration_str_to_int(dur_str):
     duration_int = (int(duration_split[0]) * 60 * 60 +
                     int(duration_split[1]) * 60 +
                     int(duration_split[2])) * 1000
-    print(duration_int)
     return duration_int
 
 
