@@ -1,5 +1,6 @@
 import aiosqlite
 import asyncio
+from functools import reduce
 
 db_path = "app/db.db"
 db_conns = []
@@ -76,7 +77,7 @@ async def create_user(id: str, email: str, first_name: str, last_name: str):
         free_db(db_index)
 
 
-async def get_user_categories(id: str):
+async def get_user_settings(id: str):
     """
     Queries the database for the categories saved for the user
 
@@ -89,12 +90,12 @@ async def get_user_categories(id: str):
 
     try:
         async with db_conn["conn"].execute("""
-            SELECT categories
+            SELECT categories, key_commands
             FROM users
             WHERE id = :id
        """, {"id": id}) as cursor:
             data = await cursor.fetchone()
-            return (True, data[0])
+            return (True, {"categories": data[0], "key_commands": data[1]})
 
     except Exception as e:
         print(e)
@@ -124,6 +125,36 @@ async def update_user_categories(id: str, categories: str):
             WHERE
                 id = :id
            """, {"id": id, "categories": categories}) as cursor:
+            await db_conn["conn"].commit()
+            return True
+    except Exception as e:
+        print(e)
+        return False
+
+    finally:
+        free_db(db_index)
+
+
+async def update_user_commands(id: str, commands: str):
+    """
+    Updates the commands properties of the given user
+
+    :params - id: string
+    :params - commands: string
+
+    :returns - boolean
+    """
+
+    db_conn, db_index = get_unused_db()
+
+    try:
+        async with db_conn["conn"].execute("""
+            UPDATE users
+            SET
+                key_commands = :commands
+            WHERE
+                id = :id
+           """, {"id": id, "commands": commands}) as cursor:
             await db_conn["conn"].commit()
             return True
     except Exception as e:
@@ -183,7 +214,7 @@ async def get_non_completed_tasks():
         free_db(db_index)
 
 
-async def get_completed_tasks_by_uid(id: str, start_date: str, end_date: str):
+async def get_completed_tasks_by_uid(id: str, start_date: str, end_date: str, tags: [str]):
     """
     Queries the db for all completed tasks of a given user
     by default it will query tasks completed in the current day
@@ -192,15 +223,19 @@ async def get_completed_tasks_by_uid(id: str, start_date: str, end_date: str):
         id: string
         start_date: string
         end_date: string
+        tags: [string]
 
     :returns
         list of tasks
     """
 
+    query_additon = reduce(
+        lambda x, y: x + f"AND tags LIKE '%{y}%' ", tags, "")
+
     db_conn, db_index = get_unused_db()
 
     try:
-        async with db_conn["conn"].execute("""
+        async with db_conn["conn"].execute(f"""
                 SELECT
                     id,
                     title,
@@ -212,8 +247,10 @@ async def get_completed_tasks_by_uid(id: str, start_date: str, end_date: str):
                     tags
                 FROM tasks
                 WHERE user_id = :uid
+                    AND is_completed = 1
                     AND completed_at >= :start_date
                     AND completed_at <= :end_date
+                   {query_additon}
                """, {
             "uid": id,
             "start_date": start_date,
@@ -357,7 +394,8 @@ async def toggle_task(obj):
             """, obj
                                            ) as cursor:
             await db_conn["conn"].commit()
-            print(f"task id: {obj['uuid']} was now toggled to { obj['is_active']}")
+            print(f"task id: {obj['uuid']} was now toggled to {
+                  obj['is_active']}")
             return (True, "")
     except aiosqlite.IntegrityError as e:
         print(e)

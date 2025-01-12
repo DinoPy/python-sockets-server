@@ -7,7 +7,7 @@ from uuid import uuid4
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from app.models import create_user, get_user_categories, update_user_categories, get_non_completed_tasks, get_completed_tasks_by_uid, fetch_active_tasks_by_user, create_task, toggle_task, edit_task, complete_task, delete_task, init_db_conns, close_db_conns
+from app.models import create_user, get_user_settings, update_user_categories, update_user_commands, get_non_completed_tasks, get_completed_tasks_by_uid, fetch_active_tasks_by_user, create_task, toggle_task, edit_task, complete_task, delete_task, init_db_conns, close_db_conns
 from app.utility import duration_str_to_int, duration_int_to_str
 
 # Create FastAPI app
@@ -84,17 +84,20 @@ async def midnight_task_refresh():
         uid = active_connections[sid]["id"]
         if (uid in user_ids):
             was_fetched, tasks_list = await fetch_active_tasks_by_user(uid)
+            were_categories_fetched, categories = await get_user_settings(id)
 
             if was_fetched:
                 print(f"issuing refresher to user id {uid}")
                 await sio.emit("tasks_refresher", {
                     "id": sid,
-                    "tasks": tasks_list
+                    "tasks": tasks_list,
+                    "categories": categories
                 }, to=sid)
             else:
                 await sio.emit("tasks_refresher", {
                     "id": sid,
-                    "tasks": []
+                    "tasks": [],
+                    "categories": categories
                 }, to=sid)
 
 
@@ -167,20 +170,22 @@ async def connect(sid, environ):
         return
 
     was_fetched, tasks_list = await fetch_active_tasks_by_user(id)
-    were_categories_fetched, categories = await get_user_categories(id)
-    print(categories)
+    were_settings_fetched, settings = await get_user_settings(id)
+    print(settings)
 
     if was_fetched:
         print("issuing refresher for reconnect")
         await sio.emit("socket_connected", {
             "id": sid,
-            "categories": categories,
+            "categories": settings["categories"],
+            "key_commands": settings["key_commands"],
             "tasks": tasks_list
         }, to=sid)
     else:
         await sio.emit("socket_connected", {
             "id": sid,
-            "categories": categories,
+            "categories": settings["categories"],
+            "key_commands": settings["key_commands"],
             "tasks": []
         }, to=sid)
 
@@ -203,6 +208,12 @@ async def user_updated_categories(sid, data):
         active_connections[sid]["id"],
         ",".join(data)
     )
+    if was_updated:
+        await emitter_to_associated_sids(
+            "related_updated_categories",
+            search_associated_sid_by_id(sid),
+            data
+        )
 
 
 @sio.event
@@ -255,7 +266,6 @@ async def task_edit(sid, data):
     response = {"was_edited": was_edited, "message": err}
 
     if was_edited:
-
         await emitter_to_associated_sids(
             "related_task_edited",
             search_associated_sid_by_id(sid),
@@ -285,20 +295,68 @@ async def get_completed_tasks(sid, data):
     now = datetime.now()
     now_formatted_start = now.strftime("%Y-%m-%d 00:00:00")
     now_formatted_end = now.strftime("%Y-%m-%d 23:59:59")
-    dates = json.loads(data)
+    tags = []
+    filters = json.loads(data)
 
-    if dates["start_date"]:
-        year, month, day = dates["start_date"].split("-")
+    if filters["start_date"]:
+        year, month, day = filters["start_date"].split("-")
         date_start = datetime(year=int(year), month=int(month), day=int(day))
         now_formatted_start = date_start.strftime("%Y-%m-%d 00:00:00")
-    if dates["end_date"]:
-        year, month, day = dates["end_date"].split("-")
+    if filters["end_date"]:
+        year, month, day = filters["end_date"].split("-")
         date_end = datetime(year=int(year), month=int(month), day=int(day))
         now_formatted_end = date_end.strftime("%Y-%m-%d 23:59:59")
+    if filters["tags"]:
+        tags = filters["tags"]
 
     was_fetched, data = await get_completed_tasks_by_uid(
-        active_connections[sid]["id"], now_formatted_start, now_formatted_end)
+        active_connections[sid]["id"], now_formatted_start, now_formatted_end, tags)
     return data
+
+
+@sio.event
+async def request_hard_refresh(sid, data):
+    id = active_connections[sid]["id"]
+    was_fetched, tasks_list = await fetch_active_tasks_by_user(id)
+    were_settings_fetched, settings = await get_user_settings(id)
+
+    if was_fetched:
+        print("issuing hard refresh")
+        return {
+            "id": sid,
+            "categories": settings,
+            "tasks": tasks_list
+        }
+    else:
+        return {
+            "id": sid,
+            "categories": settings,
+            "tasks": []
+        }
+
+
+@sio.event
+async def new_command_added(sid, data):
+    id = active_connections[sid]["id"]
+    was_updated = await update_user_commands(id, data)
+    if was_updated:
+        await emitter_to_associated_sids(
+            "related_added_command",
+            search_associated_sid_by_id(sid),
+            data
+        )
+
+
+@sio.event
+async def command_removed(sid, data):
+    id = active_connections[sid]["id"]
+    was_updated = await update_user_commands(id, data)
+    if was_updated:
+        await emitter_to_associated_sids(
+            "related_removed_command",
+            search_associated_sid_by_id(sid),
+            data
+        )
 
 
 @app.on_event("startup")
