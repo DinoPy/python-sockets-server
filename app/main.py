@@ -103,7 +103,7 @@ async def midnight_task_refresh():
 
 romania_tz = ZoneInfo("Europe/Bucharest")
 scheduler = AsyncIOScheduler(timezone=romania_tz)
-scheduler.add_job(midnight_task_refresh, "cron", hour="0", minute="0")
+scheduler.add_job(midnight_task_refresh, "cron", hour="23", minute="59")
 scheduler.start()
 
 
@@ -296,6 +296,8 @@ async def get_completed_tasks(sid, data):
     now_formatted_start = now.strftime("%Y-%m-%d 00:00:00")
     now_formatted_end = now.strftime("%Y-%m-%d 23:59:59")
     tags = []
+    search_query = ""
+    selected_category = ""
     filters = json.loads(data)
 
     if filters["start_date"]:
@@ -308,9 +310,22 @@ async def get_completed_tasks(sid, data):
         now_formatted_end = date_end.strftime("%Y-%m-%d 23:59:59")
     if filters["tags"]:
         tags = filters["tags"]
+    if filters["search_query"]:
+        search_query = filters["search_query"]
+    if filters["category"]:
+        selected_category = filters["category"]
+
+    print(filters)
+
 
     was_fetched, data = await get_completed_tasks_by_uid(
-        active_connections[sid]["id"], now_formatted_start, now_formatted_end, tags)
+        active_connections[sid]["id"],
+        now_formatted_start,
+        now_formatted_end,
+        tags,
+        search_query,
+        selected_category
+        )
     return data
 
 

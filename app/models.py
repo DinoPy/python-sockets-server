@@ -214,7 +214,14 @@ async def get_non_completed_tasks():
         free_db(db_index)
 
 
-async def get_completed_tasks_by_uid(id: str, start_date: str, end_date: str, tags: [str]):
+async def get_completed_tasks_by_uid(
+        id: str,
+        start_date: str,
+        end_date: str,
+        tags: [str],
+        search_key: str,
+        selected_category: str
+):
     """
     Queries the db for all completed tasks of a given user
     by default it will query tasks completed in the current day
@@ -224,18 +231,25 @@ async def get_completed_tasks_by_uid(id: str, start_date: str, end_date: str, ta
         start_date: string
         end_date: string
         tags: [string]
+        search_query: string
+        selected_category: string
 
     :returns
         list of tasks
     """
 
-    query_additon = reduce(
+    tags_query = reduce(
         lambda x, y: x + f"AND tags LIKE '%{y}%' ", tags, "")
 
-    db_conn, db_index = get_unused_db()
+    search_query = ""
+    if search_key:
+        search_query = f"AND title LIKE '%{search_key}%'"
 
-    try:
-        async with db_conn["conn"].execute(f"""
+    category_query = ""
+    if selected_category:
+        category_query = f"AND category = '{selected_category}'"
+
+    final_query = f"""
                 SELECT
                     id,
                     title,
@@ -250,8 +264,16 @@ async def get_completed_tasks_by_uid(id: str, start_date: str, end_date: str, ta
                     AND is_completed = 1
                     AND completed_at >= :start_date
                     AND completed_at <= :end_date
-                   {query_additon}
-               """, {
+                   {tags_query}
+                    {search_query}
+                    {category_query}
+               """
+    print(final_query)
+
+    db_conn, db_index = get_unused_db()
+
+    try:
+        async with db_conn["conn"].execute(final_query, {
             "uid": id,
             "start_date": start_date,
             "end_date": end_date
