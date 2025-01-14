@@ -339,13 +339,15 @@ async def request_hard_refresh(sid, data):
         print("issuing hard refresh")
         return {
             "id": sid,
-            "categories": settings,
+            "categories": settings["categories"],
+            "key_commands": settings["key_commands"],
             "tasks": tasks_list
         }
     else:
         return {
             "id": sid,
-            "categories": settings,
+            "categories": settings["categories"],
+            "key_commands": settings["key_commands"],
             "tasks": []
         }
 

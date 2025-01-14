@@ -9,6 +9,7 @@ __pycache__/
 app/db.db
 app/db.db-shm
 app/db.db-wal
+app/old/
 
 # Distribution / packaging
 .Python
