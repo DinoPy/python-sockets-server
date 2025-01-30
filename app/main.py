@@ -24,6 +24,7 @@ app.add_middleware(
 
 # Create a Socket.IO server
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
+
 app.mount("/ws/taskbar", socketio.ASGIApp(sio, socketio_path=""))
 """ Different server potentially for another app.
 sio2 = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*', logger=True, engineio_logger=True)
@@ -55,9 +56,14 @@ async def midnight_task_refresh():
         if dur_int == 0 and t[8] == 0:
             continue
 
+        duration = int(dur_int/1000)
+
+        if t[8] > 0:
+            duration = int((dur_int + last_epoch_t - t[8])/1000)
+
         # update current task to new duration, completed status, last_modified_at, completed_at
         was_updated, err = await complete_task({
-            "duration": duration_int_to_str(int((dur_int + last_epoch_t - t[8])/1000)),
+            "duration": duration_int_to_str(duration),
             "completed_at": now_datetime_formated,
             "id": t[0],
             "last_modified_at": last_epoch_t
@@ -317,7 +323,6 @@ async def get_completed_tasks(sid, data):
 
     print(filters)
 
-
     was_fetched, data = await get_completed_tasks_by_uid(
         active_connections[sid]["id"],
         now_formatted_start,
@@ -325,7 +330,7 @@ async def get_completed_tasks(sid, data):
         tags,
         search_query,
         selected_category
-        )
+    )
     return data
 
 
